@@ -675,7 +675,57 @@ func (m model) View() string {
 		Render(titleStyle.Render(fmt.Sprintf("Todos: %s", m.currentFile)) + "\n\n" + rightContent)
 
 	// Combine panels
-	panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
+	mainView := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
+
+	// Archive confirmation - clean full screen
+	if m.mode == EditMode && m.editingIndex == -3 {
+		confirmStyle := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("#f7768e")).
+			Padding(2, 4).
+			Align(lipgloss.Center)
+
+		title := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#f7768e")).
+			Bold(true).
+			Render("Archive Confirmation")
+
+		filename := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#7aa2f7")).
+			Render(fmt.Sprintf("'%s'", m.currentFile))
+
+		question := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#c0caf5")).
+			Render("Archive this file?")
+
+		options := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#9ece6a")).
+			Render("[y] Yes, archive    [n] No, cancel")
+
+		confirmContent := lipgloss.JoinVertical(
+			lipgloss.Center,
+			title,
+			"",
+			filename,
+			question,
+			"",
+			options,
+		)
+
+		confirmBox := confirmStyle.Render(confirmContent)
+
+		panels := lipgloss.Place(
+			m.width,
+			m.height-4,
+			lipgloss.Center,
+			lipgloss.Center,
+			confirmBox,
+		)
+
+		return panels + "\n" + hintStyle.Render("y: archive | n: cancel")
+	}
+
+	panels := mainView
 
 	// Hints bar
 	hints := ""
@@ -698,7 +748,7 @@ func (m model) View() string {
 	}
 
 	statusBar := ""
-	if m.statusMessage != "" {
+	if m.statusMessage != "" && m.editingIndex != -3 {
 		statusBar = "\n" + lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#9ece6a")).
 			Render(m.statusMessage)
