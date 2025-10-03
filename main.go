@@ -130,6 +130,14 @@ func (m model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.activePanel = FilePanel
 		}
 
+	case "h", "left":
+		// Go to left panel (file panel)
+		m.activePanel = FilePanel
+
+	case "l", "right":
+		// Go to right panel (todo panel)
+		m.activePanel = TodoPanel
+
 	case "tab":
 		// Switch between file and todo panel
 		if m.activePanel == FilePanel {
@@ -462,9 +470,9 @@ func (m model) View() string {
 			hints = hintStyle.Render("Enter: save | Esc: cancel")
 		}
 	} else if m.activePanel == FilePanel {
-		hints = hintStyle.Render("j/k: navigate | n: new file | Enter: open | Tab: switch panel | q: quit")
+		hints = hintStyle.Render("j/k: navigate | n: new file | Enter: open | h/l: switch panel | q: quit")
 	} else {
-		hints = hintStyle.Render("j/k: navigate | a: add | i: edit | d: delete | x/space: toggle | Tab: switch | q: quit")
+		hints = hintStyle.Render("j/k: navigate | a: add | i: edit | d: delete | x/space: toggle | h/l: switch panel | q: quit")
 	}
 
 	statusBar := ""
