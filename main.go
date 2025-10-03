@@ -83,10 +83,11 @@ func (m model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "a":
-		// Add new todo below current cursor
+		// Add new todo at top
 		m.mode = EditMode
 		m.editingIndex = -1
 		m.inputText = ""
+		m.cursor = 0 // Set cursor to top before entering edit mode
 		m.statusMessage = "Adding new todo (Enter to save, Esc to cancel)"
 
 	case "i":
@@ -111,7 +112,23 @@ func (m model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "x", " ":
 		// Toggle completion
 		if m.cursor < len(m.todoList.Todos) {
+			wasCompleted := m.todoList.Todos[m.cursor].Completed
 			m.todoList.Toggle(m.cursor)
+
+			// After sorting, cursor stays in incomplete section
+			if !wasCompleted {
+				// Just marked as complete - it moved to bottom
+				// Keep cursor at same position (next incomplete todo)
+				if m.cursor >= len(m.todoList.Todos) {
+					m.cursor = len(m.todoList.Todos) - 1
+				}
+			} else {
+				// Unmarked (complete -> incomplete) - it moved to top area
+				// Keep cursor where it is or adjust if needed
+				if m.cursor >= len(m.todoList.Todos) {
+					m.cursor = len(m.todoList.Todos) - 1
+				}
+			}
 			m.statusMessage = "Toggled todo status"
 		}
 	}
@@ -129,9 +146,9 @@ func (m model) handleEditMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		if m.inputText != "" {
 			if m.editingIndex == -1 {
-				// Adding new todo
+				// Adding new todo at top
 				m.todoList.Insert(m.cursor, m.inputText)
-				m.cursor++ // Move cursor to the new item
+				m.cursor = 0 // Move cursor to top (where new item is)
 			} else {
 				// Editing existing todo
 				m.todoList.Update(m.editingIndex, m.inputText)
@@ -243,22 +260,13 @@ func (m model) View() string {
 		}
 	}
 
-	// Show new todo input inline at cursor position
+	// Show new todo input inline at cursor position (which is always 0 for adding)
 	if m.mode == EditMode && m.editingIndex == -1 {
 		lines := ""
-		for i := 0; i <= m.cursor && i < len(m.todoList.Todos); i++ {
-			checkbox := "[ ]"
-			if m.todoList.Todos[i].Completed {
-				checkbox = "[✓]"
-			}
-			line := fmt.Sprintf("  %s %s", checkbox, m.todoList.Todos[i].Title)
-			if m.todoList.Todos[i].Completed {
-				line = completedStyle.Render(line)
-			}
-			lines += line + "\n"
-		}
+		// New todo always appears at top
 		lines += editStyle.Render("▶ [ ] " + m.inputText + "█") + "\n"
-		for i := m.cursor + 1; i < len(m.todoList.Todos); i++ {
+		// Then show all existing todos
+		for i := 0; i < len(m.todoList.Todos); i++ {
 			checkbox := "[ ]"
 			if m.todoList.Todos[i].Completed {
 				checkbox = "[✓]"

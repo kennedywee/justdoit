@@ -34,7 +34,7 @@ func NewTodoList(filepath string) *TodoList {
 	return tl
 }
 
-// Add adds a new todo
+// Add adds a new todo at the top
 func (tl *TodoList) Add(title string) {
 	todo := Todo{
 		ID:        tl.NextID,
@@ -42,12 +42,13 @@ func (tl *TodoList) Add(title string) {
 		Completed: false,
 		CreatedAt: time.Now(),
 	}
-	tl.Todos = append(tl.Todos, todo)
+	// Insert at beginning
+	tl.Todos = append([]Todo{todo}, tl.Todos...)
 	tl.NextID++
-	tl.Save()
+	tl.Sort() // Keep completed at bottom
 }
 
-// Insert inserts a new todo at a specific index
+// Insert inserts a new todo at the top (always)
 func (tl *TodoList) Insert(index int, title string) {
 	todo := Todo{
 		ID:        tl.NextID,
@@ -57,14 +58,9 @@ func (tl *TodoList) Insert(index int, title string) {
 	}
 	tl.NextID++
 
-	// Insert at index
-	if index >= len(tl.Todos) {
-		tl.Todos = append(tl.Todos, todo)
-	} else {
-		tl.Todos = append(tl.Todos[:index+1], tl.Todos[index:]...)
-		tl.Todos[index+1] = todo
-	}
-	tl.Save()
+	// Always insert at top
+	tl.Todos = append([]Todo{todo}, tl.Todos...)
+	tl.Sort() // Keep completed at bottom
 }
 
 // Delete removes a todo by index
@@ -79,7 +75,7 @@ func (tl *TodoList) Delete(index int) {
 func (tl *TodoList) Toggle(index int) {
 	if index >= 0 && index < len(tl.Todos) {
 		tl.Todos[index].Completed = !tl.Todos[index].Completed
-		tl.Save()
+		tl.Sort() // Auto-sort after toggling
 	}
 }
 
@@ -89,6 +85,25 @@ func (tl *TodoList) Update(index int, title string) {
 		tl.Todos[index].Title = title
 		tl.Save()
 	}
+}
+
+// Sort sorts todos so completed ones are at the bottom
+func (tl *TodoList) Sort() {
+	// Stable sort: incomplete todos first, completed todos last
+	// Preserves order within each group
+	var incomplete []Todo
+	var completed []Todo
+
+	for _, todo := range tl.Todos {
+		if todo.Completed {
+			completed = append(completed, todo)
+		} else {
+			incomplete = append(incomplete, todo)
+		}
+	}
+
+	tl.Todos = append(incomplete, completed...)
+	tl.Save()
 }
 
 // Save persists the todo list to disk using atomic writes
