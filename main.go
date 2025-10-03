@@ -27,30 +27,36 @@ const (
 
 // Model holds the application state
 type model struct {
-	todoList      *TodoList
-	activePanel   Panel
-	fileCursor    int
-	todoCursor    int
-	mode          Mode
-	inputText     string
-	editingIndex  int // -1 means adding new, >= 0 means editing existing
-	width         int
-	height        int
-	statusMessage string
-	files         []string
-	todoDir       string
-	currentFile   string
+	todoList       *TodoList
+	activePanel    Panel
+	fileCursor     int
+	todoCursor     int
+	mode           Mode
+	inputText      string
+	editingIndex   int // -1 means adding new, >= 0 means editing existing, -2 means new file, -3 means archive prompt
+	width          int
+	height         int
+	statusMessage  string
+	files          []string
+	archivedFiles  []string
+	todoDir        string
+	archiveDir     string
+	currentFile    string
+	showingArchive bool
 }
 
 func initialModel() model {
 	homeDir, _ := os.UserHomeDir()
 	todoDir := filepath.Join(homeDir, ".tui_todos")
+	archiveDir := filepath.Join(homeDir, ".tui_todos", "archive")
 
-	// Create todo directory if it doesn't exist
+	// Create directories if they don't exist
 	os.MkdirAll(todoDir, 0755)
+	os.MkdirAll(archiveDir, 0755)
 
 	// Load list of todo files
 	files := loadTodoFiles(todoDir)
+	archivedFiles := loadTodoFiles(archiveDir)
 
 	var currentFile string
 	var todoList *TodoList
@@ -66,15 +72,18 @@ func initialModel() model {
 	}
 
 	return model{
-		todoList:     todoList,
-		activePanel:  FilePanel,
-		fileCursor:   0,
-		todoCursor:   0,
-		mode:         NormalMode,
-		editingIndex: -1,
-		files:        files,
-		todoDir:      todoDir,
-		currentFile:  currentFile,
+		todoList:       todoList,
+		activePanel:    FilePanel,
+		fileCursor:     0,
+		todoCursor:     0,
+		mode:           NormalMode,
+		editingIndex:   -1,
+		files:          files,
+		archivedFiles:  archivedFiles,
+		todoDir:        todoDir,
+		archiveDir:     archiveDir,
+		currentFile:    currentFile,
+		showingArchive: false,
 	}
 }
 
@@ -91,6 +100,90 @@ func loadTodoFiles(dir string) []string {
 		}
 	}
 	return files
+}
+
+func (m *model) archiveCurrentFile() {
+	srcPath := filepath.Join(m.todoDir, m.currentFile)
+	dstPath := filepath.Join(m.archiveDir, m.currentFile)
+
+	os.Rename(srcPath, dstPath)
+
+	// Reload file lists
+	m.files = loadTodoFiles(m.todoDir)
+	m.archivedFiles = loadTodoFiles(m.archiveDir)
+
+	// Load next file or create default
+	if len(m.files) > 0 {
+		m.fileCursor = 0
+		m.currentFile = m.files[0]
+		m.todoList = NewTodoList(filepath.Join(m.todoDir, m.currentFile))
+	} else {
+		m.currentFile = "default.json"
+		m.todoList = NewTodoList(filepath.Join(m.todoDir, m.currentFile))
+		m.todoList.Save()
+		m.files = loadTodoFiles(m.todoDir)
+	}
+	m.todoCursor = 0
+}
+
+func (m *model) unarchiveFile(filename string) {
+	srcPath := filepath.Join(m.archiveDir, filename)
+	dstPath := filepath.Join(m.todoDir, filename)
+
+	os.Rename(srcPath, dstPath)
+
+	// Reload file lists
+	m.files = loadTodoFiles(m.todoDir)
+	m.archivedFiles = loadTodoFiles(m.archiveDir)
+
+	// Switch to the unarchived file
+	m.currentFile = filename
+	m.todoList = NewTodoList(dstPath)
+	m.showingArchive = false
+
+	// Find cursor position
+	for i, f := range m.files {
+		if f == filename {
+			m.fileCursor = i
+			break
+		}
+	}
+}
+
+func (m *model) allTodosCompleted() bool {
+	if len(m.todoList.Todos) == 0 {
+		return false
+	}
+	for _, todo := range m.todoList.Todos {
+		if !todo.Completed {
+			return false
+		}
+	}
+	return true
+}
+
+func (m *model) previewFile() {
+	var filename string
+	var dir string
+
+	if m.showingArchive {
+		if m.fileCursor >= len(m.archivedFiles) {
+			return
+		}
+		filename = m.archivedFiles[m.fileCursor]
+		dir = m.archiveDir
+	} else {
+		if m.fileCursor >= len(m.files) {
+			return
+		}
+		filename = m.files[m.fileCursor]
+		dir = m.todoDir
+	}
+
+	// Load the file for preview (without switching activePanel)
+	previewPath := filepath.Join(dir, filename)
+	m.todoList = NewTodoList(previewPath)
+	m.todoCursor = 0
 }
 
 func (m model) Init() tea.Cmd {
@@ -133,6 +226,8 @@ func (m model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "h", "left":
 		// Go to left panel (file panel)
 		m.activePanel = FilePanel
+		// Preview current file when entering file panel
+		m.previewFile()
 
 	case "l", "right":
 		// Go to right panel (todo panel)
@@ -144,12 +239,20 @@ func (m model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.activePanel = TodoPanel
 		} else {
 			m.activePanel = FilePanel
+			// Preview current file when entering file panel
+			m.previewFile()
 		}
 
 	case "j", "down":
 		if m.activePanel == FilePanel {
-			if m.fileCursor < len(m.files)-1 {
+			maxFiles := len(m.files)
+			if m.showingArchive {
+				maxFiles = len(m.archivedFiles)
+			}
+			if m.fileCursor < maxFiles-1 {
 				m.fileCursor++
+				// Preview file on cursor move
+				m.previewFile()
 			}
 		} else {
 			if m.todoCursor < len(m.todoList.Todos)-1 {
@@ -161,6 +264,8 @@ func (m model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.activePanel == FilePanel {
 			if m.fileCursor > 0 {
 				m.fileCursor--
+				// Preview file on cursor move
+				m.previewFile()
 			}
 		} else {
 			if m.todoCursor > 0 {
@@ -170,17 +275,37 @@ func (m model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "enter":
 		// Select file from file panel
-		if m.activePanel == FilePanel && m.fileCursor < len(m.files) {
-			m.currentFile = m.files[m.fileCursor]
-			m.todoList = NewTodoList(filepath.Join(m.todoDir, m.currentFile))
-			m.activePanel = TodoPanel
-			m.todoCursor = 0
-			m.statusMessage = fmt.Sprintf("Opened: %s", m.currentFile)
+		if m.activePanel == FilePanel {
+			if m.showingArchive && m.fileCursor < len(m.archivedFiles) {
+				// Unarchive the selected file
+				m.unarchiveFile(m.archivedFiles[m.fileCursor])
+				m.activePanel = TodoPanel
+				m.statusMessage = fmt.Sprintf("Unarchived: %s", m.currentFile)
+			} else if !m.showingArchive && m.fileCursor < len(m.files) {
+				// Open selected file
+				m.currentFile = m.files[m.fileCursor]
+				m.todoList = NewTodoList(filepath.Join(m.todoDir, m.currentFile))
+				m.activePanel = TodoPanel
+				m.todoCursor = 0
+				m.statusMessage = fmt.Sprintf("Opened: %s", m.currentFile)
+			}
+		}
+
+	case "z":
+		// Toggle archive view (only in file panel)
+		if m.activePanel == FilePanel {
+			m.showingArchive = !m.showingArchive
+			m.fileCursor = 0
+			if m.showingArchive {
+				m.statusMessage = "Showing archived files"
+			} else {
+				m.statusMessage = "Showing active files"
+			}
 		}
 
 	case "n":
-		// Create new file (only in file panel)
-		if m.activePanel == FilePanel {
+		// Create new file (only in file panel, not in archive view)
+		if m.activePanel == FilePanel && !m.showingArchive {
 			m.mode = EditMode
 			m.editingIndex = -2 // Special value for new file
 			m.inputText = ""
@@ -216,7 +341,47 @@ func (m model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.statusMessage = "Deleted todo"
 		}
 
-	case "x", " ":
+	case " ":
+		// Space key - toggle in todo panel, open file in file panel
+		if m.activePanel == FilePanel {
+			// Same as Enter in file panel
+			if m.showingArchive && m.fileCursor < len(m.archivedFiles) {
+				m.unarchiveFile(m.archivedFiles[m.fileCursor])
+				m.activePanel = TodoPanel
+				m.statusMessage = fmt.Sprintf("Unarchived: %s", m.currentFile)
+			} else if !m.showingArchive && m.fileCursor < len(m.files) {
+				m.currentFile = m.files[m.fileCursor]
+				m.todoList = NewTodoList(filepath.Join(m.todoDir, m.currentFile))
+				m.activePanel = TodoPanel
+				m.todoCursor = 0
+				m.statusMessage = fmt.Sprintf("Opened: %s", m.currentFile)
+			}
+		} else if m.activePanel == TodoPanel && m.todoCursor < len(m.todoList.Todos) {
+			// Toggle completion in todo panel
+			wasCompleted := m.todoList.Todos[m.todoCursor].Completed
+			m.todoList.Toggle(m.todoCursor)
+
+			if !wasCompleted {
+				if m.todoCursor >= len(m.todoList.Todos) {
+					m.todoCursor = len(m.todoList.Todos) - 1
+				}
+			} else {
+				if m.todoCursor >= len(m.todoList.Todos) {
+					m.todoCursor = len(m.todoList.Todos) - 1
+				}
+			}
+
+			// Check if all todos are completed
+			if m.allTodosCompleted() {
+				m.mode = EditMode
+				m.editingIndex = -3
+				m.statusMessage = "All complete! Archive this list? (y/n)"
+			} else {
+				m.statusMessage = "Toggled todo status"
+			}
+		}
+
+	case "x":
 		// Toggle completion (only in todo panel)
 		if m.activePanel == TodoPanel && m.todoCursor < len(m.todoList.Todos) {
 			wasCompleted := m.todoList.Todos[m.todoCursor].Completed
@@ -231,7 +396,23 @@ func (m model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.todoCursor = len(m.todoList.Todos) - 1
 				}
 			}
-			m.statusMessage = "Toggled todo status"
+
+			// Check if all todos are completed
+			if m.allTodosCompleted() {
+				m.mode = EditMode
+				m.editingIndex = -3 // Archive prompt
+				m.statusMessage = "All complete! Archive this list? (y/n)"
+			} else {
+				m.statusMessage = "Toggled todo status"
+			}
+		}
+
+	case "A":
+		// Manual archive (shift+a, only in file panel)
+		if m.activePanel == FilePanel && !m.showingArchive {
+			m.mode = EditMode
+			m.editingIndex = -3
+			m.statusMessage = "Archive this file? (y/n)"
 		}
 	}
 
@@ -239,6 +420,23 @@ func (m model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) handleEditMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Handle archive prompt (y/n)
+	if m.editingIndex == -3 {
+		switch msg.String() {
+		case "y", "Y":
+			m.archiveCurrentFile()
+			m.mode = NormalMode
+			m.activePanel = FilePanel // Go back to file panel
+			m.statusMessage = "File archived!"
+			return m, nil
+		case "n", "N", "esc":
+			m.mode = NormalMode
+			m.statusMessage = "Cancelled"
+			return m, nil
+		}
+		return m, nil
+	}
+
 	switch msg.String() {
 	case "esc":
 		m.mode = NormalMode
@@ -369,22 +567,40 @@ func (m model) View() string {
 	leftWidth := m.width / 4
 	rightWidth := m.width - leftWidth - 4
 
-	// Left Panel - Files
+	// Left Panel - Files and Archives
 	leftContent := ""
 	if m.mode == EditMode && m.editingIndex == -2 {
 		leftContent = editStyle.Render("▶ " + m.inputText + "█.json") + "\n"
 		for _, file := range m.files {
 			leftContent += "  " + file + "\n"
 		}
-	} else {
-		for i, file := range m.files {
+	} else if m.showingArchive {
+		// Show archived files
+		leftContent += lipgloss.NewStyle().Foreground(lipgloss.Color("#565f89")).Render("--- Archived ---") + "\n"
+		for i, file := range m.archivedFiles {
 			if m.activePanel == FilePanel && i == m.fileCursor {
+				leftContent += selectedStyle.Render("▶ " + file) + "\n"
+			} else {
+				leftContent += "  " + file + "\n"
+			}
+		}
+	} else {
+		// Show active files
+		for i, file := range m.files {
+			if m.activePanel == FilePanel && i == m.fileCursor && !m.showingArchive {
 				leftContent += selectedStyle.Render("▶ " + file) + "\n"
 			} else if file == m.currentFile {
 				leftContent += lipgloss.NewStyle().Foreground(lipgloss.Color("#7aa2f7")).Render("• " + file) + "\n"
 			} else {
 				leftContent += "  " + file + "\n"
 			}
+		}
+
+		// Show archive section
+		if len(m.archivedFiles) > 0 {
+			leftContent += "\n"
+			leftContent += lipgloss.NewStyle().Foreground(lipgloss.Color("#565f89")).Render("--- Archived ---") + "\n"
+			leftContent += lipgloss.NewStyle().Foreground(lipgloss.Color("#565f89")).Render(fmt.Sprintf("  (%d files)", len(m.archivedFiles))) + "\n"
 		}
 	}
 
@@ -466,11 +682,17 @@ func (m model) View() string {
 	if m.mode == EditMode {
 		if m.editingIndex == -2 {
 			hints = hintStyle.Render("Enter: create file | Esc: cancel")
+		} else if m.editingIndex == -3 {
+			hints = hintStyle.Render("y: archive | n: cancel")
 		} else {
 			hints = hintStyle.Render("Enter: save | Esc: cancel")
 		}
 	} else if m.activePanel == FilePanel {
-		hints = hintStyle.Render("j/k: navigate | n: new file | Enter: open | h/l: switch panel | q: quit")
+		if m.showingArchive {
+			hints = hintStyle.Render("j/k: navigate | Enter: unarchive | z: show active | h/l: switch panel | q: quit")
+		} else {
+			hints = hintStyle.Render("j/k: navigate | n: new | Enter: open | A: archive | z: show archived | h/l: switch | q: quit")
+		}
 	} else {
 		hints = hintStyle.Render("j/k: navigate | a: add | i: edit | d: delete | x/space: toggle | h/l: switch panel | q: quit")
 	}
