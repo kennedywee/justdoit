@@ -9,6 +9,14 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// Panel represents which panel is active
+type Panel int
+
+const (
+	FilePanel Panel = iota
+	TodoPanel
+)
+
 // Mode represents the current input mode
 type Mode int
 
@@ -20,25 +28,69 @@ const (
 // Model holds the application state
 type model struct {
 	todoList      *TodoList
-	cursor        int
+	activePanel   Panel
+	fileCursor    int
+	todoCursor    int
 	mode          Mode
 	inputText     string
 	editingIndex  int // -1 means adding new, >= 0 means editing existing
 	width         int
 	height        int
 	statusMessage string
+	files         []string
+	todoDir       string
+	currentFile   string
 }
 
 func initialModel() model {
 	homeDir, _ := os.UserHomeDir()
-	todoPath := filepath.Join(homeDir, ".tui_todo.json")
+	todoDir := filepath.Join(homeDir, ".tui_todos")
+
+	// Create todo directory if it doesn't exist
+	os.MkdirAll(todoDir, 0755)
+
+	// Load list of todo files
+	files := loadTodoFiles(todoDir)
+
+	var currentFile string
+	var todoList *TodoList
+
+	if len(files) > 0 {
+		currentFile = files[0]
+		todoList = NewTodoList(filepath.Join(todoDir, currentFile))
+	} else {
+		// Create default file if none exist
+		currentFile = "default.json"
+		todoList = NewTodoList(filepath.Join(todoDir, currentFile))
+		files = []string{currentFile}
+	}
 
 	return model{
-		todoList:     NewTodoList(todoPath),
-		cursor:       0,
+		todoList:     todoList,
+		activePanel:  FilePanel,
+		fileCursor:   0,
+		todoCursor:   0,
 		mode:         NormalMode,
 		editingIndex: -1,
+		files:        files,
+		todoDir:      todoDir,
+		currentFile:  currentFile,
 	}
+}
+
+func loadTodoFiles(dir string) []string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return []string{}
+	}
+
+	var files []string
+	for _, entry := range entries {
+		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".json" {
+			files = append(files, entry.Name())
+		}
+	}
+	return files
 }
 
 func (m model) Init() tea.Cmd {
@@ -72,61 +124,103 @@ func (m model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+c", "q":
 		return m, tea.Quit
 
+	case "esc":
+		// Go back to file panel from todo panel
+		if m.activePanel == TodoPanel {
+			m.activePanel = FilePanel
+		}
+
+	case "tab":
+		// Switch between file and todo panel
+		if m.activePanel == FilePanel {
+			m.activePanel = TodoPanel
+		} else {
+			m.activePanel = FilePanel
+		}
+
 	case "j", "down":
-		if m.cursor < len(m.todoList.Todos)-1 {
-			m.cursor++
+		if m.activePanel == FilePanel {
+			if m.fileCursor < len(m.files)-1 {
+				m.fileCursor++
+			}
+		} else {
+			if m.todoCursor < len(m.todoList.Todos)-1 {
+				m.todoCursor++
+			}
 		}
 
 	case "k", "up":
-		if m.cursor > 0 {
-			m.cursor--
+		if m.activePanel == FilePanel {
+			if m.fileCursor > 0 {
+				m.fileCursor--
+			}
+		} else {
+			if m.todoCursor > 0 {
+				m.todoCursor--
+			}
+		}
+
+	case "enter":
+		// Select file from file panel
+		if m.activePanel == FilePanel && m.fileCursor < len(m.files) {
+			m.currentFile = m.files[m.fileCursor]
+			m.todoList = NewTodoList(filepath.Join(m.todoDir, m.currentFile))
+			m.activePanel = TodoPanel
+			m.todoCursor = 0
+			m.statusMessage = fmt.Sprintf("Opened: %s", m.currentFile)
+		}
+
+	case "n":
+		// Create new file (only in file panel)
+		if m.activePanel == FilePanel {
+			m.mode = EditMode
+			m.editingIndex = -2 // Special value for new file
+			m.inputText = ""
+			m.statusMessage = "Enter filename (without .json)"
 		}
 
 	case "a":
-		// Add new todo at top
-		m.mode = EditMode
-		m.editingIndex = -1
-		m.inputText = ""
-		m.cursor = 0 // Set cursor to top before entering edit mode
-		m.statusMessage = "Adding new todo (Enter to save, Esc to cancel)"
+		// Add new todo (only in todo panel)
+		if m.activePanel == TodoPanel {
+			m.mode = EditMode
+			m.editingIndex = -1
+			m.inputText = ""
+			m.todoCursor = 0
+			m.statusMessage = "Adding new todo (Enter to save, Esc to cancel)"
+		}
 
 	case "i":
-		// Edit current todo
-		if m.cursor < len(m.todoList.Todos) {
+		// Edit current todo (only in todo panel)
+		if m.activePanel == TodoPanel && m.todoCursor < len(m.todoList.Todos) {
 			m.mode = EditMode
-			m.editingIndex = m.cursor
-			m.inputText = m.todoList.Todos[m.cursor].Title
+			m.editingIndex = m.todoCursor
+			m.inputText = m.todoList.Todos[m.todoCursor].Title
 			m.statusMessage = "Editing todo (Enter to save, Esc to cancel)"
 		}
 
 	case "d":
-		// Delete current todo
-		if m.cursor < len(m.todoList.Todos) {
-			m.todoList.Delete(m.cursor)
-			if m.cursor >= len(m.todoList.Todos) && m.cursor > 0 {
-				m.cursor--
+		// Delete current todo (only in todo panel)
+		if m.activePanel == TodoPanel && m.todoCursor < len(m.todoList.Todos) {
+			m.todoList.Delete(m.todoCursor)
+			if m.todoCursor >= len(m.todoList.Todos) && m.todoCursor > 0 {
+				m.todoCursor--
 			}
 			m.statusMessage = "Deleted todo"
 		}
 
 	case "x", " ":
-		// Toggle completion
-		if m.cursor < len(m.todoList.Todos) {
-			wasCompleted := m.todoList.Todos[m.cursor].Completed
-			m.todoList.Toggle(m.cursor)
+		// Toggle completion (only in todo panel)
+		if m.activePanel == TodoPanel && m.todoCursor < len(m.todoList.Todos) {
+			wasCompleted := m.todoList.Todos[m.todoCursor].Completed
+			m.todoList.Toggle(m.todoCursor)
 
-			// After sorting, cursor stays in incomplete section
 			if !wasCompleted {
-				// Just marked as complete - it moved to bottom
-				// Keep cursor at same position (next incomplete todo)
-				if m.cursor >= len(m.todoList.Todos) {
-					m.cursor = len(m.todoList.Todos) - 1
+				if m.todoCursor >= len(m.todoList.Todos) {
+					m.todoCursor = len(m.todoList.Todos) - 1
 				}
 			} else {
-				// Unmarked (complete -> incomplete) - it moved to top area
-				// Keep cursor where it is or adjust if needed
-				if m.cursor >= len(m.todoList.Todos) {
-					m.cursor = len(m.todoList.Todos) - 1
+				if m.todoCursor >= len(m.todoList.Todos) {
+					m.todoCursor = len(m.todoList.Todos) - 1
 				}
 			}
 			m.statusMessage = "Toggled todo status"
@@ -145,18 +239,40 @@ func (m model) handleEditMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "enter":
 		if m.inputText != "" {
-			if m.editingIndex == -1 {
+			if m.editingIndex == -2 {
+				// Creating new file
+				filename := m.inputText + ".json"
+				newPath := filepath.Join(m.todoDir, filename)
+				m.todoList = NewTodoList(newPath)
+				m.todoList.Save() // Force save to create the file
+				m.currentFile = filename
+				m.files = loadTodoFiles(m.todoDir) // Reload file list after save
+
+				// Find index of new file
+				for i, f := range m.files {
+					if f == filename {
+						m.fileCursor = i
+						break
+					}
+				}
+
+				m.activePanel = TodoPanel
+				m.todoCursor = 0
+				m.statusMessage = fmt.Sprintf("Created: %s", filename)
+			} else if m.editingIndex == -1 {
 				// Adding new todo at top
-				m.todoList.Insert(m.cursor, m.inputText)
-				m.cursor = 0 // Move cursor to top (where new item is)
+				m.todoList.Insert(m.todoCursor, m.inputText)
+				m.todoCursor = 0
 			} else {
 				// Editing existing todo
 				m.todoList.Update(m.editingIndex, m.inputText)
 			}
 			m.mode = NormalMode
-			m.statusMessage = "Saved"
+			if m.editingIndex >= 0 {
+				m.statusMessage = "Saved"
+			}
 		} else {
-			m.statusMessage = "Todo cannot be empty"
+			m.statusMessage = "Cannot be empty"
 		}
 		return m, nil
 
@@ -181,17 +297,29 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 	x, y := msg.X, msg.Y
 
-	// Click anywhere in the list to select
-	// Border top (0), Title (1), blank line (2), todos start at (3)
-	clickedLine := y - 3
+	// Calculate panel boundaries
+	leftWidth := m.width / 4
+	leftPanelEnd := leftWidth + 2
 
-	if clickedLine >= 0 && clickedLine < len(m.todoList.Todos) {
-		m.cursor = clickedLine
-		m.statusMessage = fmt.Sprintf("Selected: %s", m.todoList.Todos[clickedLine].Title)
+	// Click in left panel (files)
+	if x >= 0 && x < leftPanelEnd {
+		m.activePanel = FilePanel
+		clickedLine := y - 3
+		if clickedLine >= 0 && clickedLine < len(m.files) {
+			m.fileCursor = clickedLine
+		}
+		return m, nil
 	}
 
-	// Suppress unused variable warning
-	_ = x
+	// Click in right panel (todos)
+	if x >= leftPanelEnd && x < m.width {
+		m.activePanel = TodoPanel
+		clickedLine := y - 3
+		if clickedLine >= 0 && clickedLine < len(m.todoList.Todos) {
+			m.todoCursor = clickedLine
+			m.statusMessage = fmt.Sprintf("Selected: %s", m.todoList.Todos[clickedLine].Title)
+		}
+	}
 
 	return m, nil
 }
@@ -211,6 +339,10 @@ func (m model) View() string {
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(lipgloss.Color("#565f89"))
 
+		activeBorderStyle = lipgloss.NewStyle().
+					Border(lipgloss.RoundedBorder()).
+					BorderForeground(lipgloss.Color("#7aa2f7"))
+
 		titleStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#bb9af7")).
 				Bold(true)
@@ -226,11 +358,43 @@ func (m model) View() string {
 				Foreground(lipgloss.Color("#f7768e"))
 	)
 
-	// Todo list content
-	content := ""
+	leftWidth := m.width / 4
+	rightWidth := m.width - leftWidth - 4
+
+	// Left Panel - Files
+	leftContent := ""
+	if m.mode == EditMode && m.editingIndex == -2 {
+		leftContent = editStyle.Render("▶ " + m.inputText + "█.json") + "\n"
+		for _, file := range m.files {
+			leftContent += "  " + file + "\n"
+		}
+	} else {
+		for i, file := range m.files {
+			if m.activePanel == FilePanel && i == m.fileCursor {
+				leftContent += selectedStyle.Render("▶ " + file) + "\n"
+			} else if file == m.currentFile {
+				leftContent += lipgloss.NewStyle().Foreground(lipgloss.Color("#7aa2f7")).Render("• " + file) + "\n"
+			} else {
+				leftContent += "  " + file + "\n"
+			}
+		}
+	}
+
+	leftBorder := borderStyle
+	if m.activePanel == FilePanel {
+		leftBorder = activeBorderStyle
+	}
+
+	leftPanel := leftBorder.
+		Width(leftWidth).
+		Height(m.height - 4).
+		Render(titleStyle.Render("Files") + "\n\n" + leftContent)
+
+	// Right Panel - Todos
+	rightContent := ""
 
 	if len(m.todoList.Todos) == 0 {
-		content = lipgloss.NewStyle().
+		rightContent = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#565f89")).
 			Render("No todos yet. Press 'a' to add one.")
 	} else {
@@ -242,30 +406,26 @@ func (m model) View() string {
 
 			line := fmt.Sprintf("%s %s", checkbox, todo.Title)
 
-			// Apply completed styling
 			if todo.Completed {
 				line = completedStyle.Render(line)
 			}
 
-			// Show edit mode inline
 			if m.mode == EditMode && m.editingIndex == i {
 				line = editStyle.Render("✎ " + m.inputText + "█")
-			} else if i == m.cursor {
+			} else if m.activePanel == TodoPanel && i == m.todoCursor {
 				line = selectedStyle.Render("▶ " + line)
 			} else {
 				line = "  " + line
 			}
 
-			content += line + "\n"
+			rightContent += line + "\n"
 		}
 	}
 
-	// Show new todo input inline at cursor position (which is always 0 for adding)
+	// Show new todo input inline
 	if m.mode == EditMode && m.editingIndex == -1 {
 		lines := ""
-		// New todo always appears at top
 		lines += editStyle.Render("▶ [ ] " + m.inputText + "█") + "\n"
-		// Then show all existing todos
 		for i := 0; i < len(m.todoList.Todos); i++ {
 			checkbox := "[ ]"
 			if m.todoList.Todos[i].Completed {
@@ -277,20 +437,34 @@ func (m model) View() string {
 			}
 			lines += line + "\n"
 		}
-		content = lines
+		rightContent = lines
 	}
 
-	panel := borderStyle.
-		Width(m.width - 4).
+	rightBorder := borderStyle
+	if m.activePanel == TodoPanel {
+		rightBorder = activeBorderStyle
+	}
+
+	rightPanel := rightBorder.
+		Width(rightWidth).
 		Height(m.height - 4).
-		Render(titleStyle.Render("Todo List") + "\n\n" + content)
+		Render(titleStyle.Render(fmt.Sprintf("Todos: %s", m.currentFile)) + "\n\n" + rightContent)
+
+	// Combine panels
+	panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 
 	// Hints bar
 	hints := ""
 	if m.mode == EditMode {
-		hints = hintStyle.Render("Enter: save | Esc: cancel")
+		if m.editingIndex == -2 {
+			hints = hintStyle.Render("Enter: create file | Esc: cancel")
+		} else {
+			hints = hintStyle.Render("Enter: save | Esc: cancel")
+		}
+	} else if m.activePanel == FilePanel {
+		hints = hintStyle.Render("j/k: navigate | n: new file | Enter: open | Tab: switch panel | q: quit")
 	} else {
-		hints = hintStyle.Render("j/k: navigate | a: add | i: edit | d: delete | x/space: toggle | q: quit")
+		hints = hintStyle.Render("j/k: navigate | a: add | i: edit | d: delete | x/space: toggle | Tab: switch | q: quit")
 	}
 
 	statusBar := ""
@@ -300,7 +474,7 @@ func (m model) View() string {
 			Render(m.statusMessage)
 	}
 
-	return panel + "\n" + hints + statusBar
+	return panels + "\n" + hints + statusBar
 }
 
 func main() {
