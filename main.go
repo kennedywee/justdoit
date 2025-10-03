@@ -102,6 +102,30 @@ func loadTodoFiles(dir string) []string {
 	return files
 }
 
+func (m *model) deleteCurrentFile() {
+	filePath := filepath.Join(m.todoDir, m.currentFile)
+	os.Remove(filePath)
+
+	// Reload file lists
+	m.files = loadTodoFiles(m.todoDir)
+
+	// Load next file or create default
+	if len(m.files) > 0 {
+		if m.fileCursor >= len(m.files) {
+			m.fileCursor = len(m.files) - 1
+		}
+		m.currentFile = m.files[m.fileCursor]
+		m.todoList = NewTodoList(filepath.Join(m.todoDir, m.currentFile))
+	} else {
+		m.currentFile = "default.json"
+		m.todoList = NewTodoList(filepath.Join(m.todoDir, m.currentFile))
+		m.todoList.Save()
+		m.files = loadTodoFiles(m.todoDir)
+		m.fileCursor = 0
+	}
+	m.todoCursor = 0
+}
+
 func (m *model) archiveCurrentFile() {
 	srcPath := filepath.Join(m.todoDir, m.currentFile)
 	dstPath := filepath.Join(m.archiveDir, m.currentFile)
@@ -332,8 +356,15 @@ func (m model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "d":
-		// Delete current todo (only in todo panel)
-		if m.activePanel == TodoPanel && m.todoCursor < len(m.todoList.Todos) {
+		if m.activePanel == FilePanel {
+			// Delete file (only in file panel, not in archive view)
+			if !m.showingArchive && m.fileCursor < len(m.files) {
+				m.mode = EditMode
+				m.editingIndex = -4 // Special value for delete file confirmation
+				m.statusMessage = "Delete this file? (y/n)"
+			}
+		} else if m.activePanel == TodoPanel && m.todoCursor < len(m.todoList.Todos) {
+			// Delete current todo (only in todo panel)
 			m.todoList.Delete(m.todoCursor)
 			if m.todoCursor >= len(m.todoList.Todos) && m.todoCursor > 0 {
 				m.todoCursor--
@@ -420,6 +451,23 @@ func (m model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) handleEditMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Handle delete file prompt (y/n)
+	if m.editingIndex == -4 {
+		switch msg.String() {
+		case "y", "Y":
+			m.deleteCurrentFile()
+			m.mode = NormalMode
+			m.activePanel = FilePanel
+			m.statusMessage = "File deleted!"
+			return m, nil
+		case "n", "N", "esc":
+			m.mode = NormalMode
+			m.statusMessage = "Cancelled"
+			return m, nil
+		}
+		return m, nil
+	}
+
 	// Handle archive prompt (y/n)
 	if m.editingIndex == -3 {
 		switch msg.String() {
@@ -677,6 +725,54 @@ func (m model) View() string {
 	// Combine panels
 	mainView := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 
+	// Delete confirmation - clean full screen
+	if m.mode == EditMode && m.editingIndex == -4 {
+		confirmStyle := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("#f7768e")).
+			Padding(2, 4).
+			Align(lipgloss.Center)
+
+		title := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#f7768e")).
+			Bold(true).
+			Render("Delete Confirmation")
+
+		filename := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#7aa2f7")).
+			Render(fmt.Sprintf("'%s'", m.currentFile))
+
+		question := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#c0caf5")).
+			Render("Permanently delete this file?")
+
+		options := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#9ece6a")).
+			Render("[y] Yes, delete    [n] No, cancel")
+
+		confirmContent := lipgloss.JoinVertical(
+			lipgloss.Center,
+			title,
+			"",
+			filename,
+			question,
+			"",
+			options,
+		)
+
+		confirmBox := confirmStyle.Render(confirmContent)
+
+		panels := lipgloss.Place(
+			m.width,
+			m.height-4,
+			lipgloss.Center,
+			lipgloss.Center,
+			confirmBox,
+		)
+
+		return panels + "\n" + hintStyle.Render("y: delete | n: cancel")
+	}
+
 	// Archive confirmation - clean full screen
 	if m.mode == EditMode && m.editingIndex == -3 {
 		confirmStyle := lipgloss.NewStyle().
@@ -734,6 +830,8 @@ func (m model) View() string {
 			hints = hintStyle.Render("Enter: create file | Esc: cancel")
 		} else if m.editingIndex == -3 {
 			hints = hintStyle.Render("y: archive | n: cancel")
+		} else if m.editingIndex == -4 {
+			hints = hintStyle.Render("y: delete | n: cancel")
 		} else {
 			hints = hintStyle.Render("Enter: save | Esc: cancel")
 		}
@@ -741,14 +839,14 @@ func (m model) View() string {
 		if m.showingArchive {
 			hints = hintStyle.Render("j/k: navigate | Enter: unarchive | z: show active | h/l: switch panel | q: quit")
 		} else {
-			hints = hintStyle.Render("j/k: navigate | n: new | Enter: open | A: archive | z: show archived | h/l: switch | q: quit")
+			hints = hintStyle.Render("j/k: navigate | n: new | d: delete | Enter: open | A: archive | z: show archived | h/l: switch | q: quit")
 		}
 	} else {
 		hints = hintStyle.Render("j/k: navigate | a: add | i: edit | d: delete | x/space: toggle | h/l: switch panel | q: quit")
 	}
 
 	statusBar := ""
-	if m.statusMessage != "" && m.editingIndex != -3 {
+	if m.statusMessage != "" && m.editingIndex != -3 && m.editingIndex != -4 {
 		statusBar = "\n" + lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#9ece6a")).
 			Render(m.statusMessage)
