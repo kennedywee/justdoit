@@ -33,7 +33,7 @@ func (m model) View() string {
 	hints := m.renderHints()
 	statusBar := m.renderStatusBar()
 
-	return mainView + "\n" + hints + statusBar
+	return mainView + "\n\n" + hints + statusBar
 }
 
 // renderFilePanel renders the left file panel
@@ -93,7 +93,7 @@ func (m model) renderFilePanel(width int) string {
 		Width(width).
 		Height(m.height - 4).
 		Padding(1, 1).
-		Render(title + "\n" + content)
+		Render(title + "\n\n" + content)
 }
 
 // renderTodoPanel renders the right todo panel
@@ -141,7 +141,7 @@ func (m model) renderTodoPanel(width int) string {
 		Width(width).
 		Height(m.height - 4).
 		Padding(1, 1).
-		Render(title + "\n" + content)
+		Render(title + "\n\n" + content)
 }
 
 // renderTodoList renders the list of todos
@@ -400,7 +400,7 @@ func (m model) renderStatusBar() string {
 			Background(ColorMantle).
 			Padding(0, 1).
 			Bold(true)
-		return "\n" + statusStyle.Render(statusIcon+m.statusMessage)
+		return "\n\n" + statusStyle.Render(statusIcon+m.statusMessage)
 	}
 	return ""
 }
