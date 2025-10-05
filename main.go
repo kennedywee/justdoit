@@ -327,24 +327,24 @@ func (m model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-	case "n":
-		// Create new file (only in file panel, not in archive view)
-		if m.activePanel == FilePanel && !m.showingArchive {
-			m.mode = EditMode
-			m.editingIndex = -2 // Special value for new file
-			m.inputText = ""
-			m.statusMessage = "Enter filename (without .json)"
-		}
-
 	case "a":
-		// Add new todo (only in todo panel)
-		if m.activePanel == TodoPanel {
+		if m.activePanel == FilePanel {
+			// Create new file (only in file panel, not in archive view)
+			if !m.showingArchive {
+				m.mode = EditMode
+				m.editingIndex = -2 // Special value for new file
+				m.inputText = ""
+				m.statusMessage = "Enter filename (without .json)"
+			}
+		} else if m.activePanel == TodoPanel {
+			// Add new todo (only in todo panel)
 			m.mode = EditMode
 			m.editingIndex = -1
 			m.inputText = ""
 			m.todoCursor = 0
 			m.statusMessage = "Adding new todo (Enter to save, Esc to cancel)"
 		}
+
 
 	case "i":
 		// Edit current todo (only in todo panel)
@@ -839,7 +839,7 @@ func (m model) View() string {
 		if m.showingArchive {
 			hints = hintStyle.Render("j/k: navigate | Enter: unarchive | z: show active | h/l: switch panel | q: quit")
 		} else {
-			hints = hintStyle.Render("j/k: navigate | n: new | d: delete | Enter: open | A: archive | z: show archived | h/l: switch | q: quit")
+			hints = hintStyle.Render("j/k: navigate | a: new | d: delete | Enter: open | A: archive | z: show archived | h/l: switch | q: quit")
 		}
 	} else {
 		hints = hintStyle.Render("j/k: navigate | a: add | i: edit | d: delete | x/space: toggle | h/l: switch panel | q: quit")
