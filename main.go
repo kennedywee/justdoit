@@ -583,33 +583,51 @@ func (m model) View() string {
 		return "Loading..."
 	}
 
-	// Define styles
+	// Catppuccin Mocha color palette
 	var (
+		// Base colors
+		base       = lipgloss.Color("#1e1e2e") // background
+		overlay0   = lipgloss.Color("#6c7086") // muted text
+		text       = lipgloss.Color("#cdd6f4") // main text
+		subtext0   = lipgloss.Color("#a6adc8") // dimmed text
+
+		// Accent colors
+		lavender   = lipgloss.Color("#b4befe") // titles
+		blue       = lipgloss.Color("#89b4fa") // active borders
+		sapphire   = lipgloss.Color("#74c7ec") // selection
+		mauve      = lipgloss.Color("#cba6f7") // titles alt
+		green      = lipgloss.Color("#a6e3a1") // success/hints
+		red        = lipgloss.Color("#f38ba8") // edit/danger
+		peach      = lipgloss.Color("#fab387") // current file
+
 		selectedStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#7dcfff")).
-				Background(lipgloss.Color("#283457"))
+				Foreground(base).
+				Background(sapphire).
+				Bold(true)
 
 		borderStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("#565f89"))
+				BorderForeground(overlay0)
 
 		activeBorderStyle = lipgloss.NewStyle().
 					Border(lipgloss.RoundedBorder()).
-					BorderForeground(lipgloss.Color("#7aa2f7"))
+					BorderForeground(blue).
+					Bold(true)
 
 		titleStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#bb9af7")).
+				Foreground(mauve).
 				Bold(true)
 
 		completedStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#565f89")).
+				Foreground(overlay0).
 				Strikethrough(true)
 
 		hintStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#9ece6a"))
+				Foreground(green)
 
 		editStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#f7768e"))
+				Foreground(red).
+				Bold(true)
 	)
 
 	leftWidth := m.width / 4
@@ -624,12 +642,12 @@ func (m model) View() string {
 		}
 	} else if m.showingArchive {
 		// Show archived files
-		leftContent += lipgloss.NewStyle().Foreground(lipgloss.Color("#565f89")).Render("--- Archived ---") + "\n"
+		leftContent += lipgloss.NewStyle().Foreground(overlay0).Render("╌╌╌ archived ╌╌╌") + "\n"
 		for i, file := range m.archivedFiles {
 			if m.activePanel == FilePanel && i == m.fileCursor {
 				leftContent += selectedStyle.Render("▶ " + file) + "\n"
 			} else {
-				leftContent += "  " + file + "\n"
+				leftContent += lipgloss.NewStyle().Foreground(subtext0).Render("  " + file) + "\n"
 			}
 		}
 	} else {
@@ -638,17 +656,17 @@ func (m model) View() string {
 			if m.activePanel == FilePanel && i == m.fileCursor && !m.showingArchive {
 				leftContent += selectedStyle.Render("▶ " + file) + "\n"
 			} else if file == m.currentFile {
-				leftContent += lipgloss.NewStyle().Foreground(lipgloss.Color("#7aa2f7")).Render("• " + file) + "\n"
+				leftContent += lipgloss.NewStyle().Foreground(peach).Bold(true).Render("● " + file) + "\n"
 			} else {
-				leftContent += "  " + file + "\n"
+				leftContent += lipgloss.NewStyle().Foreground(text).Render("  " + file) + "\n"
 			}
 		}
 
 		// Show archive section
 		if len(m.archivedFiles) > 0 {
 			leftContent += "\n"
-			leftContent += lipgloss.NewStyle().Foreground(lipgloss.Color("#565f89")).Render("--- Archived ---") + "\n"
-			leftContent += lipgloss.NewStyle().Foreground(lipgloss.Color("#565f89")).Render(fmt.Sprintf("  (%d files)", len(m.archivedFiles))) + "\n"
+			leftContent += lipgloss.NewStyle().Foreground(overlay0).Render("╌╌╌ archived ╌╌╌") + "\n"
+			leftContent += lipgloss.NewStyle().Foreground(overlay0).Render(fmt.Sprintf("  %d files", len(m.archivedFiles))) + "\n"
 		}
 	}
 
@@ -660,26 +678,30 @@ func (m model) View() string {
 	leftPanel := leftBorder.
 		Width(leftWidth).
 		Height(m.height - 4).
-		Render(titleStyle.Render("Files") + "\n\n" + leftContent)
+		Padding(0, 1).
+		Render(titleStyle.Render("📁 Files") + "\n\n" + leftContent)
 
 	// Right Panel - Todos
 	rightContent := ""
 
 	if len(m.todoList.Todos) == 0 {
 		rightContent = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#565f89")).
+			Foreground(overlay0).
+			Italic(true).
 			Render("No todos yet. Press 'a' to add one.")
 	} else {
 		for i, todo := range m.todoList.Todos {
-			checkbox := "[ ]"
+			checkbox := "○"
 			if todo.Completed {
-				checkbox = "[✓]"
+				checkbox = "●"
 			}
 
 			line := fmt.Sprintf("%s %s", checkbox, todo.Title)
 
 			if todo.Completed {
 				line = completedStyle.Render(line)
+			} else {
+				line = lipgloss.NewStyle().Foreground(text).Render(line)
 			}
 
 			if m.mode == EditMode && m.editingIndex == i {
@@ -697,15 +719,17 @@ func (m model) View() string {
 	// Show new todo input inline
 	if m.mode == EditMode && m.editingIndex == -1 {
 		lines := ""
-		lines += editStyle.Render("▶ [ ] " + m.inputText + "█") + "\n"
+		lines += editStyle.Render("▶ ○ " + m.inputText + "█") + "\n"
 		for i := 0; i < len(m.todoList.Todos); i++ {
-			checkbox := "[ ]"
+			checkbox := "○"
 			if m.todoList.Todos[i].Completed {
-				checkbox = "[✓]"
+				checkbox = "●"
 			}
 			line := fmt.Sprintf("  %s %s", checkbox, m.todoList.Todos[i].Title)
 			if m.todoList.Todos[i].Completed {
 				line = completedStyle.Render(line)
+			} else {
+				line = lipgloss.NewStyle().Foreground(text).Render(line)
 			}
 			lines += line + "\n"
 		}
@@ -720,7 +744,8 @@ func (m model) View() string {
 	rightPanel := rightBorder.
 		Width(rightWidth).
 		Height(m.height - 4).
-		Render(titleStyle.Render(fmt.Sprintf("Todos: %s", m.currentFile)) + "\n\n" + rightContent)
+		Padding(0, 1).
+		Render(titleStyle.Render(fmt.Sprintf("✓ %s", m.currentFile)) + "\n\n" + rightContent)
 
 	// Combine panels
 	mainView := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
@@ -729,25 +754,26 @@ func (m model) View() string {
 	if m.mode == EditMode && m.editingIndex == -4 {
 		confirmStyle := lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#f7768e")).
+			BorderForeground(red).
 			Padding(2, 4).
 			Align(lipgloss.Center)
 
 		title := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#f7768e")).
+			Foreground(red).
 			Bold(true).
-			Render("Delete Confirmation")
+			Render("⚠ Delete Confirmation")
 
 		filename := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#7aa2f7")).
+			Foreground(lavender).
+			Bold(true).
 			Render(fmt.Sprintf("'%s'", m.currentFile))
 
 		question := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#c0caf5")).
+			Foreground(text).
 			Render("Permanently delete this file?")
 
 		options := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#9ece6a")).
+			Foreground(green).
 			Render("[y] Yes, delete    [n] No, cancel")
 
 		confirmContent := lipgloss.JoinVertical(
@@ -777,25 +803,26 @@ func (m model) View() string {
 	if m.mode == EditMode && m.editingIndex == -3 {
 		confirmStyle := lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#f7768e")).
+			BorderForeground(blue).
 			Padding(2, 4).
 			Align(lipgloss.Center)
 
 		title := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#f7768e")).
+			Foreground(blue).
 			Bold(true).
 			Render("Archive Confirmation")
 
 		filename := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#7aa2f7")).
+			Foreground(lavender).
+			Bold(true).
 			Render(fmt.Sprintf("'%s'", m.currentFile))
 
 		question := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#c0caf5")).
+			Foreground(text).
 			Render("Archive this file?")
 
 		options := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#9ece6a")).
+			Foreground(green).
 			Render("[y] Yes, archive    [n] No, cancel")
 
 		confirmContent := lipgloss.JoinVertical(
@@ -848,7 +875,7 @@ func (m model) View() string {
 	statusBar := ""
 	if m.statusMessage != "" && m.editingIndex != -3 && m.editingIndex != -4 {
 		statusBar = "\n" + lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#9ece6a")).
+			Foreground(green).
 			Render(m.statusMessage)
 	}
 
