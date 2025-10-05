@@ -1,4 +1,4 @@
-module tui-todo
+module justdoit
 
 go 1.25.1
 

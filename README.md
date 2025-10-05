@@ -1,4 +1,4 @@
-# TUI Todo
+# justdoit
 
 A terminal user interface (TUI) todo list manager built with Go and Bubble Tea.
 
@@ -13,13 +13,13 @@ A terminal user interface (TUI) todo list manager built with Go and Bubble Tea.
 ## Build
 
 ```bash
-go build -o tui_todo
+go build -o justdoit
 ```
 
 ## Run
 
 ```bash
-./tui_todo
+./justdoit
 ```
 
 ## Usage
