@@ -1,3 +1,4 @@
+// Package todo provides todo list management with persistent storage.
 package todo
 
 import (

@@ -178,9 +178,9 @@ func (m Model) renderTodoList() string {
 		}
 
 		checkboxStr := checkStyle.Render(checkbox)
-		line := fmt.Sprintf("%s  %s", checkboxStr, todo.Title)
 
 		// Apply style based on completion
+		var line string
 		if todo.Completed {
 			textStyle := m.Styles.Completed
 			line = fmt.Sprintf("%s  %s", checkboxStr, textStyle.Render(todo.Title))

@@ -101,7 +101,8 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "a":
-		if m.ActivePanel == FilePanel {
+		switch m.ActivePanel {
+		case FilePanel:
 			// Create new file (only in file panel, not in archive view)
 			if !m.ShowingArchive {
 				m.Mode = EditMode
@@ -109,7 +110,7 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.InputText = ""
 				m.StatusMessage = "Enter filename (without .json)"
 			}
-		} else if m.ActivePanel == TodoPanel {
+		case TodoPanel:
 			// Add new todo (only in todo panel)
 			m.Mode = EditMode
 			m.EditingIndex = -1
