@@ -99,8 +99,7 @@ func NewStyles() Styles {
 		Selected: lipgloss.NewStyle().
 			Foreground(ColorCrust).
 			Background(ColorTeal).
-			Bold(true).
-			Padding(0, 1),
+			Bold(true),
 
 		Border: lipgloss.NewStyle().
 			Border(ModernBorder).
