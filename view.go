@@ -15,9 +15,15 @@ func (m model) View() string {
 	leftWidth := m.width / 4
 	rightWidth := m.width - leftWidth - 4
 
+	// Calculate panel height based on whether status bar is showing
+	panelHeight := m.height - 4
+	if m.statusMessage != "" && m.editingIndex != -3 && m.editingIndex != -4 {
+		panelHeight = m.height - 7 // Account for status bar extra lines
+	}
+
 	// Render panels
-	leftPanel := m.renderFilePanel(leftWidth)
-	rightPanel := m.renderTodoPanel(rightWidth)
+	leftPanel := m.renderFilePanelWithHeight(leftWidth, panelHeight)
+	rightPanel := m.renderTodoPanelWithHeight(rightWidth, panelHeight)
 	mainView := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 
 	// Handle special confirmation dialogs
@@ -36,8 +42,8 @@ func (m model) View() string {
 	return mainView + "\n\n" + hints + statusBar
 }
 
-// renderFilePanel renders the left file panel
-func (m model) renderFilePanel(width int) string {
+// renderFilePanelWithHeight renders the left file panel with specified height
+func (m model) renderFilePanelWithHeight(width int, height int) string {
 	content := ""
 
 	if m.mode == EditMode && m.editingIndex == -2 {
@@ -91,13 +97,13 @@ func (m model) renderFilePanel(width int) string {
 
 	return borderStyle.
 		Width(width).
-		Height(m.height - 4).
+		Height(height).
 		Padding(1, 1).
 		Render(title + "\n\n" + content)
 }
 
-// renderTodoPanel renders the right todo panel
-func (m model) renderTodoPanel(width int) string {
+// renderTodoPanelWithHeight renders the right todo panel with specified height
+func (m model) renderTodoPanelWithHeight(width int, height int) string {
 	content := ""
 
 	if len(m.todoList.Todos) == 0 {
@@ -139,7 +145,7 @@ func (m model) renderTodoPanel(width int) string {
 
 	return borderStyle.
 		Width(width).
-		Height(m.height - 4).
+		Height(height).
 		Padding(1, 1).
 		Render(title + "\n\n" + content)
 }
