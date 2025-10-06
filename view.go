@@ -106,7 +106,10 @@ func (m model) renderFilePanelWithHeight(width int, height int) string {
 func (m model) renderTodoPanelWithHeight(width int, height int) string {
 	content := ""
 
-	if len(m.todoList.Todos) == 0 {
+	// Always show renderTodoList when adding new todo to show input preview
+	if m.mode == EditMode && m.editingIndex == -1 {
+		content = m.renderTodoList()
+	} else if len(m.todoList.Todos) == 0 {
 		emptyIcon := "󰄱"
 		emptyMsg := m.styles.Dimmed.Italic(true).Render(fmt.Sprintf("  %s  No todos yet", emptyIcon))
 		emptyHint := m.styles.Muted.Render("  Press 'a' to add one")
