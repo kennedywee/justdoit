@@ -97,8 +97,8 @@ type Styles struct {
 func NewStyles() Styles {
 	return Styles{
 		Selected: lipgloss.NewStyle().
-			Foreground(ColorCrust).
-			Background(ColorTeal).
+			Foreground(ColorText).
+			Background(ColorCrust).
 			Bold(true),
 
 		Border: lipgloss.NewStyle().

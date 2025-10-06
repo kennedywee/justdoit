@@ -57,7 +57,8 @@ func (m model) renderFilePanelWithHeight(width int, height int) string {
 		content += m.styles.Separator.Render("  ─── archived ───") + "\n\n"
 		for i, file := range m.archivedFiles {
 			if m.activePanel == FilePanel && i == m.fileCursor {
-				content += m.styles.Selected.Render(" "+file) + "\n"
+				cursor := lipgloss.NewStyle().Foreground(ColorTeal).Render("▊")
+				content += m.styles.Selected.Render(" " + cursor + " " + file + " ") + "\n"
 			} else {
 				content += m.styles.Dimmed.Render("  󰃨 "+file) + "\n"
 			}
@@ -66,7 +67,8 @@ func (m model) renderFilePanelWithHeight(width int, height int) string {
 		// Show active files
 		for i, file := range m.files {
 			if m.activePanel == FilePanel && i == m.fileCursor && !m.showingArchive {
-				content += m.styles.Selected.Render(" "+file) + "\n"
+				cursor := lipgloss.NewStyle().Foreground(ColorTeal).Render("▊")
+				content += m.styles.Selected.Render(" " + cursor + " " + file + " ") + "\n"
 			} else if file == m.currentFile {
 				content += m.styles.CurrentFile.Render("󰄲 "+file) + "\n"
 			} else {
@@ -191,7 +193,8 @@ func (m model) renderTodoList() string {
 			editIcon := m.styles.Edit.Render("")
 			line = m.styles.Edit.Render(fmt.Sprintf(" %s  %s█", editIcon, m.inputText))
 		} else if m.activePanel == TodoPanel && i == m.todoCursor {
-			line = m.styles.Selected.Render(" " + line)
+			cursor := lipgloss.NewStyle().Foreground(ColorTeal).Render("▊")
+			line = m.styles.Selected.Render(" " + cursor + " " + line + " ")
 		} else {
 			line = "  " + line
 		}
