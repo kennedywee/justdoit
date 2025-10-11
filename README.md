@@ -1,6 +1,6 @@
 # justdoit
 
-A terminal user interface (TUI) todo list manager built with Go and Bubble Tea.
+A simple and keyboard-driven terminal user interface (TUI) todo list manager. Built with Go and Bubble Tea.
 
 ## Features
 
